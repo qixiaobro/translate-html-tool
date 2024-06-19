@@ -3,11 +3,39 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
+// 忽略翻译的文本
+const ignoreTexts = [
+  'HavasVip',
+  'HAVASVIP',
+  'English',
+  'Français',
+  'Italiano',
+  '日本語',
+  '한국어',
+  'Deutsch',
+  'Русский',
+  'Tiếng Việt',
+  'Português',
+  'Türkçe',
+  'Español',
+  'فارسی',
+  'العربية',
+  'Bahasa Indonesia',
+  'Ελληνικά',
+  'Melayu',
+  'แบบไทย',
+  'Latinus',
+  'हिंदी',
+  'বাংলা',
+  'اردو',
+  '繁体中文'
+];
+
 function extractText(htmlContent) {
   const $ = cheerio.load(htmlContent);
   const lang = {};
 
-  // 提去HTML中的meta标签中的name为description和keywords的content属性
+  // 提取HTML中的meta标签中的name为description和keywords的content属性
   $('meta').each((index, element) => {
     const name = $(element).attr('name');
     if (name === 'description') {
@@ -16,7 +44,7 @@ function extractText(htmlContent) {
         lang[content] = '';
       }
     }
-  })
+  });
 
   // 提取HTML中的文本
   $('*').contents().filter((index, element) => {
@@ -24,7 +52,31 @@ function extractText(htmlContent) {
   }).each((index, element) => {
     const text = element.data.trim();
     if (text) {
-      lang[text] = '';
+      // 检查是否包含忽略的文本
+      let containsIgnoreText = false;
+      ignoreTexts.forEach(ignoreText => {
+        if (text.includes(ignoreText)) {
+          containsIgnoreText = true;
+        }
+      });
+
+      if (containsIgnoreText) {
+        // 拆分并分别处理
+        let remainingText = text;
+        ignoreTexts.forEach(ignoreText => {
+          if (remainingText.includes(ignoreText)) {
+            const parts = remainingText.split(ignoreText);
+            parts.forEach(part => {
+              if (part.trim()) {
+                lang[part.trim()] = '';
+              }
+            });
+            remainingText = remainingText.replace(new RegExp(ignoreText, 'g'), '');
+          }
+        });
+      } else {
+        lang[text] = '';
+      }
     }
   });
 
@@ -33,14 +85,12 @@ function extractText(htmlContent) {
 
 function translateText(text, fromLang, toLang) {
   // 将text翻译成toLang语言
-
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'translate.google.com',
       path: `/translate_a/single?client=gtx&sl=${fromLang}&tl=${toLang}&dt=t&q=${encodeURIComponent(text)}`,
       method: 'GET'
     };
-
     const req = http.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => {
@@ -60,7 +110,7 @@ function translateText(text, fromLang, toLang) {
     });
 
     req.end();
-  })
+  });
 }
 
 // 覆盖文本, 将文本替换成翻译后的文本,生成新的HTML内容，生成新的HTML文件
@@ -78,13 +128,33 @@ function replaceText(htmlContent, translateText, toLang) {
     }
   });
 
-
   $('*').contents().filter((index, element) => {
     return element.type === 'text';
   }).each((index, element) => {
-    const text = element.data.trim();
-    if (text && translateText[text]) {
-      $(element).replaceWith(translateText[text]);
+    let text = element.data.trim();
+    if (text) {
+      // 检查是否包含忽略的文本
+      let containsIgnoreText = false;
+      ignoreTexts.forEach(ignoreText => {
+        if (text.includes(ignoreText)) {
+          containsIgnoreText = true;
+        }
+      });
+
+      if (containsIgnoreText) {
+        // 拆分并分别处理
+        ignoreTexts.forEach(ignoreText => {
+          if (text.includes(ignoreText)) {
+            const parts = text.split(ignoreText);
+            const translatedParts = parts.map(part => translateText[part.trim()] || part.trim());
+            text = translatedParts.join(ignoreText);
+          }
+        });
+      } else if (translateText[text]) {
+        text = translateText[text];
+      }
+
+      $(element).replaceWith(text);
     }
   });
 
@@ -136,9 +206,9 @@ function translateFile(htmlFilePath, translatedDirPath, toLang) {
   });
 }
 
-toLangs = [
+const toLangs = [
   "zh-TW",
-  "fr", 
+  "fr",
   "it",
   "ja",
   "ko",
@@ -158,9 +228,9 @@ toLangs = [
   "hi",
   "bn",
   "ur"
-]
+];
 const originDirPath = './originFile';
-const translatedDirPath = './translatedFile'
+const translatedDirPath = './translatedFile';
 
 // 扫描originFile目录下的所有HTML文件,获取文件路径，包括子目录下的HTML文件，对每个HTML文件执行上述操作
 fs.readdir(originDirPath, (err, files) => {
@@ -187,4 +257,3 @@ fs.readdir(originDirPath, (err, files) => {
     });
   });
 });
-
