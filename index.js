@@ -5,8 +5,14 @@ const path = require('path');
 
 // 忽略翻译的文本
 const ignoreTexts = [
-  'HavasVip',
-  'HAVASVIP',
+  'Superai',
+  'SuperAI',
+  'superai',
+  'superaigtp@gmail.com',
+  'USDT',
+  'Copyright © 2021-2024 Super AI,Inc. All rights reserved.',
+  ' USDT',
+  'play_arrow',
   'English',
   'Français',
   'Italiano',
@@ -36,46 +42,46 @@ function extractText(htmlContent) {
   const lang = {};
 
   // 提取HTML中的meta标签中的name为description和keywords的content属性
-  $('meta').each((index, element) => {
-    const name = $(element).attr('name');
-    if (name === 'description') {
-      const content = $(element).attr('content');
-      if (content) {
-        lang[content] = '';
-      }
+  $('meta[name="description"], meta[name="keywords"]').each((index, element) => {
+    const content = $(element).attr('content');
+    if (content) {
+      lang[content] = '';
     }
   });
 
-  // 提取HTML中的文本
-  $('*').contents().filter((index, element) => {
-    return element.type === 'text';
-  }).each((index, element) => {
-    const text = element.data.trim();
-    if (text) {
-      // 检查是否包含忽略的文本
-      let containsIgnoreText = false;
-      ignoreTexts.forEach(ignoreText => {
-        if (text.includes(ignoreText)) {
-          containsIgnoreText = true;
-        }
-      });
+  // 定义需要忽略的标签
+  const ignoreTags = ['script', 'style', 'noscript', 'iframe', 'svg'];
 
-      if (containsIgnoreText) {
-        // 拆分并分别处理
-        let remainingText = text;
+  // 提取HTML中的文本
+  $('body').find('*').contents().each((index, element) => {
+    if (element.type === 'text' && !$(element).parents(ignoreTags.join(',')).length) {
+      const text = $(element).text().trim();
+      if (text) {
+        // 检查是否包含忽略的文本
+        let containsIgnoreText = false;
         ignoreTexts.forEach(ignoreText => {
-          if (remainingText.includes(ignoreText)) {
-            const parts = remainingText.split(ignoreText);
-            parts.forEach(part => {
-              if (part.trim()) {
-                lang[part.trim()] = '';
-              }
-            });
-            remainingText = remainingText.replace(new RegExp(ignoreText, 'g'), '');
+          if (text.includes(ignoreText)) {
+            containsIgnoreText = true;
           }
         });
-      } else {
-        lang[text] = '';
+
+        if (containsIgnoreText) {
+          // 拆分并分别处理
+          let remainingText = text;
+          ignoreTexts.forEach(ignoreText => {
+            if (remainingText.includes(ignoreText)) {
+              const parts = remainingText.split(ignoreText);
+              parts.forEach(part => {
+                if (part.trim()) {
+                  lang[part.trim()] = '';
+                }
+              });
+              remainingText = remainingText.replace(new RegExp(ignoreText, 'g'), '');
+            }
+          });
+        } else {
+          lang[text] = '';
+        }
       }
     }
   });
@@ -99,8 +105,10 @@ function translateText(text, fromLang, toLang) {
 
       res.on('end', () => {
         const result = JSON.parse(data);
-        const translatedText = result[0][0][0];
-        resolve(translatedText);
+        // console.log('result:',text, result);
+        // const translatedText = result[0][0][0];
+        const translatedTexts = result[0].map(item => item[0]).join('');
+        resolve(translatedTexts);
       });
     });
 
@@ -117,44 +125,45 @@ function translateText(text, fromLang, toLang) {
 function replaceText(htmlContent, translateText, toLang) {
   const $ = cheerio.load(htmlContent);
 
-  // 替换meta标签中的name为description的content属性
-  $('meta').each((index, element) => {
-    const name = $(element).attr('name');
-    if (name === 'description') {
-      const content = $(element).attr('content');
-      if (content && translateText[content]) {
-        $(element).attr('content', translateText[content]);
-      }
+  // 替换meta标签中的name为description和keywords的content属性
+  $('meta[name="description"], meta[name="keywords"]').each((index, element) => {
+    const content = $(element).attr('content');
+    if (content && translateText[content]) {
+      $(element).attr('content', translateText[content]);
     }
   });
 
-  $('*').contents().filter((index, element) => {
-    return element.type === 'text';
-  }).each((index, element) => {
-    let text = element.data.trim();
-    if (text) {
-      // 检查是否包含忽略的文本
-      let containsIgnoreText = false;
-      ignoreTexts.forEach(ignoreText => {
-        if (text.includes(ignoreText)) {
-          containsIgnoreText = true;
-        }
-      });
+  // 定义需要忽略的标签
+  const ignoreTags = ['script', 'style', 'noscript', 'iframe', 'svg'];
 
-      if (containsIgnoreText) {
-        // 拆分并分别处理
+  // 替换HTML中的文本
+  $('body').find('*').contents().each((index, element) => {
+    if (element.type === 'text' && !$(element).parents(ignoreTags.join(',')).length) {
+      let text = $(element).text().trim();
+      if (text) {
+        // 检查是否包含忽略的文本
+        let containsIgnoreText = false;
         ignoreTexts.forEach(ignoreText => {
           if (text.includes(ignoreText)) {
-            const parts = text.split(ignoreText);
-            const translatedParts = parts.map(part => translateText[part.trim()] || part.trim());
-            text = translatedParts.join(ignoreText);
+            containsIgnoreText = true;
           }
         });
-      } else if (translateText[text]) {
-        text = translateText[text];
-      }
 
-      $(element).replaceWith(text);
+        if (containsIgnoreText) {
+          // 拆分并分别处理
+          ignoreTexts.forEach(ignoreText => {
+            if (text.includes(ignoreText)) {
+              const parts = text.split(ignoreText);
+              const translatedParts = parts.map(part => translateText[part.trim()] || part.trim());
+              text = translatedParts.join(ignoreText);
+            }
+          });
+        } else if (translateText[text]) {
+          text = translateText[text];
+        }
+
+        $(element).replaceWith(text);
+      }
     }
   });
 
@@ -178,12 +187,30 @@ function translateFile(htmlFilePath, translatedDirPath, toLang) {
     // 翻译文本
     for (let text in extractedText) {
       try {
-        const translatedText = await translateText(text, 'en', toLang);
-        extractedText[text] = translatedText;
+        const newText = text.replace(/[\r\n\t]/g, '');
+        const translatedText = await translateText(newText, 'en', toLang);
+        // console.log('Translated text:', text, '=>', translatedText);
+        extractedText[text] = translatedText.replace(/^['"]+|['"]+$/g, '');
       } catch (e) {
         console.error('Error translating text:', text, e);
       }
     }
+
+    // 将翻译后的文本用对象的形式单独输出到一个文件中保存
+    // const translatedTextFilePath = path.join(translatedDirPath, toLang, path.basename(htmlFilePath) + '.translated.json');
+    // const translatedTextDirPath = path.dirname(translatedTextFilePath);
+    // if (!fs.existsSync(translatedTextDirPath)) {
+    //   fs.mkdirSync(translatedTextDirPath, { recursive: true });
+    // }
+    // fs.writeFile(translatedTextFilePath, JSON.stringify(extractedText, null, 2), (err) => {
+    //   if (err) {
+    //     console.error('Error writing the translated text file:', err);
+    //     return;
+    //   }
+
+    //   console.log('Translated text file saved:', translatedTextFilePath);
+    // }
+    // );
 
     // 替换文本
     const newHtmlContent = replaceText(htmlContent, extractedText, toLang);
@@ -203,6 +230,16 @@ function translateFile(htmlFilePath, translatedDirPath, toLang) {
 
       console.log('New HTML file saved:', newHtmlFilePath);
     });
+    // 生成新的HTML文件, 保存到新的文件中,保留原文件，新文件放在translatedFile目录下，文件名跟翻译的语言key一样
+    // const newHtmlFilePath = path.join(translatedDirPath, toLang + '.html');
+    // fs.writeFile(newHtmlFilePath, newHtmlContent, (err) => {
+    //   if (err) {
+    //     console.error('Error writing the new HTML file:', err);
+    //     return;
+    //   }
+
+    //   console.log('New HTML file saved:', newHtmlFilePath);
+    // });
   });
 }
 
